@@ -60,6 +60,15 @@
             >
               {{ action }}
             </button>
+            <button
+              v-if="meta.verify"
+              class="link"
+              type="button"
+              :data-testid="`verify-${row.id}`"
+              @click="verifyRow(row)"
+            >
+              核对落地
+            </button>
           </td>
         </tr>
         <tr v-if="!rows.length">
@@ -69,6 +78,32 @@
         </tr>
       </tbody>
     </table>
+
+    <section v-if="verifyReport" class="verify-panel" data-testid="verify-panel">
+      <h3>
+        落地核对：{{ verifyReport.staging_code }}
+        <span :class="verifyReport.consistent ? 'ok-text' : 'error-text'">
+          {{ verifyReport.consistent ? '一致' : '不一致' }}
+        </span>
+      </h3>
+      <p>
+        分区 {{ verifyReport.partition }} · 实际数量 {{ verifyReport.actual_count }} 行 ·
+        断点位置 {{ verifyReport.breakpoint_position }} · 落地水位 {{ verifyReport.watermark }} ·
+        无凭据行 {{ verifyReport.untracked_rows }}
+      </p>
+      <p>
+        最后两行：
+        <span v-for="item in verifyReport.last_rows" :key="item.position" class="legend-item">
+          第{{ item.position }}行（行号{{ item.row.line_no ?? '—' }}）
+        </span>
+        <span v-if="!verifyReport.last_rows.length">暂存分区暂无落盘数据</span>
+      </p>
+      <p>
+        <span v-for="(ok, label) in verifyReport.checks" :key="label" class="legend-item">
+          {{ label }}：{{ ok ? '一致' : '不一致' }}
+        </span>
+      </p>
+    </section>
 
     <div v-if="showCreate" class="modal-backdrop" data-testid="create-modal">
       <form class="modal" @submit.prevent="submitCreate">
@@ -102,8 +137,9 @@ import {
   listEntries,
   moduleMeta,
   runAction as applyAction,
+  verifyEntry,
 } from '@/api/backend-service'
-import type { EntryRow } from '@/data/types'
+import type { EntryRow, VerifyReport } from '@/data/types'
 
 const props = defineProps<{ moduleKey: string }>()
 const meta = moduleMeta(props.moduleKey)
@@ -115,6 +151,7 @@ const filterFields = meta.fields.slice(0, 3)
 const showCreate = ref(false)
 const creating = ref(false)
 const createValues = ref<Record<string, string>>({})
+const verifyReport = ref<VerifyReport | null>(null)
 const stats = computed(() => [
   { label: meta.metrics[0], value: total.value },
   { label: meta.metrics[1], value: rows.value.filter((row) => row.status === meta.statuses[1]).length },
@@ -176,8 +213,19 @@ async function runAction(action: string, row: EntryRow) {
   }
 }
 
+async function verifyRow(row: EntryRow) {
+  errorMessage.value = ''
+  verifyReport.value = null
+  try {
+    verifyReport.value = await verifyEntry(meta.key, Number(row.id))
+  } catch (error) {
+    errorMessage.value = error instanceof Error ? error.message : '落地核对失败'
+  }
+}
+
 async function reload() {
   errorMessage.value = ''
+  verifyReport.value = null
   try {
     const payload = await listEntries(meta.key, filters.value)
     rows.value = payload.items

@@ -1,6 +1,6 @@
 import { request } from './client'
 import { moduleMeta } from '@/data/modules'
-import type { ActionResult, EntryRow, OverviewResult, PageResult } from '@/data/types'
+import type { ActionResult, EntryRow, OverviewResult, PageResult, VerifyReport } from '@/data/types'
 
 export { moduleMeta }
 
@@ -34,6 +34,12 @@ export async function runAction(
     method: 'POST',
     body: JSON.stringify({ action }),
   })
+  return await response.json()
+}
+
+export async function verifyEntry(key: string, id: number): Promise<VerifyReport> {
+  const response = await request(`/api/${key}/${id}/verify`)
+  if (!response.ok) throw new Error('落地核对结果读取失败')
   return await response.json()
 }
 
